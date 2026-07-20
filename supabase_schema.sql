@@ -27,5 +27,15 @@ create policy "luxor_update" on app_state
 insert into app_state (id, data) values ('projetos', '[]'::jsonb)
   on conflict (id) do nothing;
 
--- 5) Realtime: publica a tabela para receber mudanças ao vivo.
-alter publication supabase_realtime add table app_state;
+-- 5) Realtime: publica a tabela para receber mudanças ao vivo (idempotente).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'app_state'
+  ) then
+    alter publication supabase_realtime add table app_state;
+  end if;
+end $$;
