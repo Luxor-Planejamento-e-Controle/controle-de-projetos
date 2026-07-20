@@ -1,0 +1,17 @@
+# snapshots de recuperação / backups (não são fonte)
+backups/
+backup_*.json
+*recovered*.json
+recovered.json
+
+# dados auxiliares fora do app
+*.xlsx
+
+# build / deps (backend futuro)
+node_modules/
+.env
+api/local.settings.json
+
+# lixo Google Drive / Windows
+desktop.ini
+Thumbs.db
