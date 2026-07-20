@@ -14,8 +14,8 @@ Dashboard de acompanhamento dos projetos de automação/BI da Luxor
   `data jsonb`) = a lista viva compartilhada. Realtime → todos veem edição na hora.
 - **Auth**: Supabase (magic-link por e-mail), restrito ao domínio `@luxor.com.br`
   via política RLS. Sem login válido, o app não carrega dado.
-- **Config**: `config.js` (não versionado) com `SUPABASE_URL` + anon key
-  (a anon key é pública por design; RLS é quem protege).
+- **Config**: `config.js` (versionado) com `SUPABASE_URL` + anon key.
+  A anon key é pública por design (RLS é quem protege), então pode ficar no repo.
 
 ## Dados / segurança
 
@@ -29,5 +29,5 @@ Dashboard de acompanhamento dos projetos de automação/BI da Luxor
 1. Criar projeto no Supabase, rodar `supabase_schema.sql` no SQL editor.
 2. Habilitar Realtime na tabela `app_state` e auth por e-mail (magic link).
 3. Semear o dado real (script fora do repo).
-4. Netlify conecta o repo (deploy automático). Definir `config.js` via build/env.
-5. Ver seção de deploy quando finalizada.
+4. Netlify conecta o repo (deploy automático, sem build, publish dir = raiz).
+5. Supabase → Authentication → URL Configuration → Site URL = URL do Netlify.

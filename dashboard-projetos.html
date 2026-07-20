@@ -450,6 +450,23 @@ Reduzir atividades manuais"></textarea>
 []
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+  window.__sbclient = (window.supabase && window.SUPABASE_URL)
+    ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY)
+    : null;
+</script>
+<style>
+  #auth-gate { position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(10,27,32,.96); }
+  #auth-gate .auth-box { background: #143840; color: #EAF2F1; padding: 28px 32px; border-radius: 14px; width: min(92vw,420px); font-family: sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  #auth-gate h2 { margin: 0 0 8px; color: #FFA400; }
+  #auth-gate p { margin: 0 0 16px; font-size: 14px; line-height: 1.4; opacity: .9; }
+  #auth-gate input { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 8px; border: 1px solid #2b5a63; background: #0D2126; color: #fff; font-size: 15px; }
+  #auth-gate button { margin-top: 12px; width: 100%; padding: 11px; border: 0; border-radius: 8px; background: #FFA400; color: #1a1a1a; font-weight: 700; font-size: 15px; cursor: pointer; }
+  #auth-gate #auth-msg { margin-top: 12px; font-size: 13px; min-height: 18px; color: #cfe; }
+</style>
+
 <script>
 (function () {
   "use strict";
@@ -540,6 +557,7 @@ Reduzir atividades manuais"></textarea>
       localStorage.setItem(STORAGE_KEY + "_applied", JSON.stringify(Object.keys(applied)));
     } catch (e) {}
     flashSaved();
+    scheduleRemoteSave();
   }
 
   var saveEl = byId("save-state"), flashT;
@@ -927,16 +945,105 @@ Reduzir atividades manuais"></textarea>
     download(html, "dashboard-projetos.html", "text/html;charset=utf-8"); toast("HTML baixado com dados atuais");
   });
   byId("btn-reset").addEventListener("click", function () {
-    if (!confirm("Restaurar a lista original? Suas edições neste navegador serão perdidas.")) return;
-    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-    state.projects = SEED.map(normalize);
+    if (!confirm("Recarregar a lista do servidor? Descarta mudanças não salvas neste navegador.")) return;
     state.owner = "todos"; state.status = "todos"; state.area = "todas"; state.q = ""; searchEl.value = "";
-    buildAreaControls(); render(); toast("Lista restaurada");
+    bootData(); toast("Recarregado do servidor");
   });
 
   window.addEventListener("resize", closePopover);
 
-  buildKpis(); buildOwnerChips(); buildOwnerChecks(); buildAreaControls(); render();
+  // ---- Supabase: base compartilhada ----
+  var REMOTE = { timer: null, applyingRemote: false };
+  function sbc() { return window.__sbclient; }
+
+  function scheduleRemoteSave() {
+    if (!sbc() || REMOTE.applyingRemote) return;
+    clearTimeout(REMOTE.timer);
+    REMOTE.timer = setTimeout(remoteSave, 600);
+  }
+  function remoteSave() {
+    var c = sbc(); if (!c) return;
+    c.from("app_state").update({ data: state.projects, updated_at: new Date().toISOString() })
+      .eq("id", "projetos").then(function (res) {
+        if (res.error) { toast("Erro ao salvar online"); console.error(res.error); }
+      });
+  }
+  function remoteLoad() {
+    var c = sbc(); if (!c) return Promise.resolve(null);
+    return c.from("app_state").select("data").eq("id", "projetos").single()
+      .then(function (res) {
+        if (res.error) { console.error(res.error); return null; }
+        return (res.data && Array.isArray(res.data.data)) ? res.data.data : [];
+      });
+  }
+  function subscribeRealtime() {
+    var c = sbc(); if (!c) return;
+    c.channel("app_state_projetos")
+      .on("postgres_changes",
+          { event: "UPDATE", schema: "public", table: "app_state", filter: "id=eq.projetos" },
+          function (payload) {
+            var d = payload["new"] && payload["new"].data;
+            if (!Array.isArray(d)) return;
+            REMOTE.applyingRemote = true;
+            try { state.projects = d.map(normalize); buildAreaControls(); render(); }
+            finally { REMOTE.applyingRemote = false; }
+          })
+      .subscribe();
+  }
+
+  // ---- Gate de autenticação (magic link por e-mail) ----
+  function showLogin(msg) {
+    var o = byId("auth-gate");
+    if (!o) {
+      o = document.createElement("div"); o.id = "auth-gate";
+      o.innerHTML =
+        '<div class="auth-box">' +
+        '<h2>Controle de Projetos</h2>' +
+        '<p>Entre com seu e-mail <b>@luxor.com.br</b>. Enviamos um link de acesso.</p>' +
+        '<input id="auth-email" type="email" placeholder="voce@luxor.com.br" autocomplete="email">' +
+        '<button id="auth-send" type="button">Enviar link</button>' +
+        '<div id="auth-msg"></div></div>';
+      document.body.appendChild(o);
+      byId("auth-send").addEventListener("click", sendLink);
+      byId("auth-email").addEventListener("keydown", function (e) { if (e.key === "Enter") sendLink(); });
+    }
+    o.style.display = "flex";
+    if (msg) byId("auth-msg").textContent = msg;
+  }
+  function hideLogin() { var o = byId("auth-gate"); if (o) o.style.display = "none"; }
+  function sendLink() {
+    var c = sbc(); var email = (byId("auth-email").value || "").trim();
+    if (!c) { byId("auth-msg").textContent = "Config do Supabase ausente."; return; }
+    if (!/@luxor\.com\.br$/i.test(email)) { byId("auth-msg").textContent = "Use um e-mail @luxor.com.br."; return; }
+    byId("auth-msg").textContent = "Enviando...";
+    c.auth.signInWithOtp({ email: email, options: { emailRedirectTo: window.location.origin } })
+      .then(function (res) {
+        byId("auth-msg").textContent = res.error
+          ? ("Erro: " + res.error.message)
+          : "Link enviado! Confira o e-mail e clique para entrar.";
+      });
+  }
+
+  function bootData() {
+    hideLogin();
+    remoteLoad().then(function (arr) {
+      if (arr) state.projects = arr.map(normalize);
+      buildAreaControls(); render();
+      subscribeRealtime();
+    });
+  }
+  function boot() {
+    buildKpis(); buildOwnerChips(); buildOwnerChecks();
+    var c = sbc();
+    if (!c) { showLogin("Config do Supabase ausente (config.js)."); return; }
+    c.auth.getSession().then(function (res) {
+      if (res.data && res.data.session) bootData(); else showLogin();
+    });
+    c.auth.onAuthStateChange(function (ev, session) {
+      if (session) bootData(); else showLogin();
+    });
+  }
+  boot();
 })();
 </script>
 
