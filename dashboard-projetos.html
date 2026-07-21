@@ -419,6 +419,10 @@
         </div>
       </div>
       <div class="fieldset">
+        <label for="f-year">Ano objetivo de entrega <span class="hint">(opcional)</span></label>
+        <input type="number" id="f-year" min="2024" max="2100" step="1" placeholder="Ex.: 2026">
+      </div>
+      <div class="fieldset">
         <label>Responsável</label>
         <div class="checks" id="f-owners"><label class="check"><input type="checkbox" value="arthur"> Arthur</label><label class="check"><input type="checkbox" value="carol"> Carol</label><label class="check"><input type="checkbox" value="aline"> Aline</label><label class="check"><input type="checkbox" value="leonardo"> Leonardo</label></div>
       </div>
@@ -538,7 +542,8 @@ Reduzir atividades manuais"></textarea>
       prioridade: PRIO[p.prioridade] ? p.prioridade : "nd",
       desc: String(p.desc || ""),
       points: Array.isArray(p.points) ? p.points.slice() : [],
-      note: p.note ? String(p.note) : ""
+      note: p.note ? String(p.note) : "",
+      targetYear: /^\d{4}$/.test(String(p.targetYear || "").trim()) ? String(p.targetYear).trim() : ""
     };
   }
   function uid() {
@@ -681,6 +686,7 @@ Reduzir atividades manuais"></textarea>
     return '<div class="card-meta">' +
       '<span class="mx" title="Complexidade: ' + cx.label + '"><span class="mx-bars c' + cx.n + '"><i></i><i></i><i></i></span>' + cx.label + "</span>" +
       '<span class="mp p-' + p.prioridade + '" title="Prioridade">Prioridade ' + PRIO[p.prioridade] + "</span>" +
+      (p.targetYear ? '<span class="mp" title="Ano objetivo de entrega">Entrega ' + esc(p.targetYear) + "</span>" : "") +
       "</div>";
   }
 
@@ -705,7 +711,7 @@ Reduzir atividades manuais"></textarea>
   }
 
   function tableHTML(list) {
-    var head = "<thead><tr><th>Projeto</th><th>Responsável</th><th>Área</th><th>Estágio</th><th>Complex.</th><th>Prioridade</th></tr></thead>";
+    var head = "<thead><tr><th>Projeto</th><th>Responsável</th><th>Área</th><th>Estágio</th><th>Complex.</th><th>Prioridade</th><th>Entrega</th></tr></thead>";
     var rows = list.map(function (p) {
       var cx = COMPLEX[p.complexidade];
       return '<tr data-id="' + p.id + '">' +
@@ -715,6 +721,7 @@ Reduzir atividades manuais"></textarea>
         '<td><span class="pill s-' + p.status + '">' + STATUS[p.status].label + "</span></td>" +
         '<td><span class="mx"><span class="mx-bars c' + cx.n + '"><i></i><i></i><i></i></span>' + cx.label + "</span></td>" +
         '<td><span class="mp p-' + p.prioridade + '">' + PRIO[p.prioridade] + "</span></td>" +
+        '<td class="t-year">' + (p.targetYear ? esc(p.targetYear) : "—") + "</td>" +
         "</tr>";
     }).join("");
     return '<table class="tbl">' + head + "<tbody>" + rows + "</tbody></table>";
@@ -756,12 +763,13 @@ Reduzir atividades manuais"></textarea>
   function render() {
     var shown = state.projects.filter(matches);
     var isSummary = state.view === "table";
-    byId("controls").hidden = isSummary;
-    byId("meta-row").hidden = isSummary;
-    gridEl.hidden = isSummary; tableWrap.hidden = !isSummary;
-    if (isSummary) { tableWrap.innerHTML = summaryHTML(state.projects); }
+    var hasResults = shown.length !== 0;
+    byId("controls").hidden = false;
+    byId("meta-row").hidden = false;
+    gridEl.hidden = isSummary; tableWrap.hidden = !isSummary || !hasResults;
+    if (isSummary) { if (hasResults) tableWrap.innerHTML = summaryHTML(shown); }
     else { gridEl.innerHTML = shown.map(cardHTML).join(""); }
-    emptyEl.hidden = isSummary || shown.length !== 0;
+    emptyEl.hidden = hasResults;
     countEl.innerHTML = "<b>" + shown.length + "</b> de " + state.projects.length + " projeto" + (state.projects.length !== 1 ? "s" : "");
     refreshKpiNums(); refreshOwnerChips();
     byId("foot-total").textContent = state.projects.length + " projetos · " + allAreas().length + " áreas · " + OWNER_KEYS.length + " pessoas";
@@ -846,7 +854,7 @@ Reduzir atividades manuais"></textarea>
 
   /* Modal */
   var modal = byId("modal"), form = byId("form");
-  var fTitle = byId("f-title"), fArea = byId("f-area"), fStatus = byId("f-status"), fComplex = byId("f-complex"), fPrio = byId("f-prio"), fDesc = byId("f-desc"), fPoints = byId("f-points"), fNote = byId("f-note");
+  var fTitle = byId("f-title"), fArea = byId("f-area"), fStatus = byId("f-status"), fComplex = byId("f-complex"), fPrio = byId("f-prio"), fDesc = byId("f-desc"), fPoints = byId("f-points"), fNote = byId("f-note"), fYear = byId("f-year");
   var btnDelete = byId("btn-delete"), btnDuplicate = byId("btn-duplicate");
 
   function openModal(id) {
@@ -864,6 +872,7 @@ Reduzir atividades manuais"></textarea>
     fDesc.value = p ? p.desc : "";
     fPoints.value = p ? p.points.join("\n") : "";
     fNote.value = p ? p.note : "";
+    fYear.value = p ? (p.targetYear || "") : "";
     btnDelete.hidden = !p; btnDuplicate.hidden = !p;
     if (typeof modal.showModal === "function") modal.showModal(); else modal.setAttribute("open", "");
     fTitle.focus();
@@ -876,7 +885,8 @@ Reduzir atividades manuais"></textarea>
       complexidade: fComplex.value, prioridade: fPrio.value, owner: ownerChecksValue(),
       desc: fDesc.value.trim(),
       points: fPoints.value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean),
-      note: fNote.value.trim()
+      note: fNote.value.trim(),
+      targetYear: fYear.value.trim()
     };
   }
 
